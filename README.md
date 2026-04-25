@@ -42,7 +42,7 @@ yorha-game-library/
 
 ---
 
-## ⚙️ Prerequisites
+## Prerequisites
 
 - Python 3.8+
 - MySQL Server 8.x
