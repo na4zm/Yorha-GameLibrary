@@ -59,8 +59,8 @@ yorha-game-library/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/yorha-game-library.git
-cd yorha-game-library
+git https://github.com/na4zm/YoRHa-GameLibrary
+cd YoRHa-GameLibrary
 ```
 
 ### 2. Install dependencies
