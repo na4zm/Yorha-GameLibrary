@@ -178,10 +178,10 @@ This keeps SQL out of the Python source and makes it easy to review, edit, or op
 
 ## Contributing
 
-Pull requests are not welcome! this is a mini-Project for college and it is complete and no further update is not in work.
+Pull requests are not welcome! this is a mini-Project for college and it is complete and no further update is in work.
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the [MIT License](LICENSE).
