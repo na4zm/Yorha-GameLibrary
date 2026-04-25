@@ -25,10 +25,8 @@ A sleek, dark-themed desktop application for managing your personal game collect
 
 ## Screenshots
 
-![Login Screen](screenshots/login_sc.png)
 ![Browse Games](screenshots/browse.png)
 ![Favourite](screenshots/fav.png)
-![Profile](screenshots/profile.png)
 ![Review](screenshots/reviews.png)
 
 ---
