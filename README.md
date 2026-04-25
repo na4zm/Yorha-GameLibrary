@@ -35,8 +35,10 @@ A sleek, dark-themed desktop application for managing your personal game collect
 
 ```
 yorha-game-library/
+├── screenshots  
 ├── main.py          # Application entry point & all UI logic
 ├── queries.sql      # Every SQL query used by the app, named and centralised
+├── table-creation.sql 
 └── README.md
 ```
 
