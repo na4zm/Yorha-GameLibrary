@@ -31,7 +31,7 @@ A sleek, dark-themed desktop application for managing your personal game collect
 
 ---
 
-## 🗂️ Project Structure
+## Project Structure
 
 ```
 yorha-game-library/
@@ -52,7 +52,7 @@ yorha-game-library/
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### 1. Clone the repository
 
@@ -146,7 +146,7 @@ python main.py
 
 ---
 
-## 🔐 User Roles
+## User Roles
 
 | Role  | Capabilities |
 |-------|-------------|
@@ -157,7 +157,7 @@ To create an admin account, check the **"Register as Admin / Dev account"** chec
 
 ---
 
-## 🗄️ How Queries Work
+## How Queries Work
 
 All SQL lives in `queries.sql`, tagged with named markers:
 
@@ -176,9 +176,9 @@ This keeps SQL out of the Python source and makes it easy to review, edit, or op
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-Pull requests are welcome! Please open an issue first to discuss any significant changes.
+Pull requests are not welcome! this is a mini-Project for college and it is complete and no further update is not in work.
 
 ---
 
