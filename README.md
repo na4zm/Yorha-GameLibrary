@@ -1,4 +1,4 @@
-# 🎮 YoRHa Game Library
+# YoRHa Game Library
 
 A sleek, dark-themed desktop application for managing your personal game collection — built with Python, CustomTkinter, and MySQL.
 
@@ -9,7 +9,7 @@ A sleek, dark-themed desktop application for managing your personal game collect
 
 ---
 
-## ✨ Features
+## Features
 
 - **User Authentication** — Register and log in with username/password; supports regular users and admin/developer accounts
 - **Browse Games** — View the full game catalogue with developer info, live search filtering by title or genre
@@ -23,9 +23,13 @@ A sleek, dark-themed desktop application for managing your personal game collect
 
 ---
 
-## 🖥️ Screenshots
+## Screenshots
 
-> _Add your screenshots here_
+![Login Screen](screenshots/login_sc.png)
+![Browse Games](screenshots/browse.png)
+![Favourite](screenshots/fav.png)
+![Profile](screenshots/profile.png)
+![Review](screenshots/reviews.png)
 
 ---
 
