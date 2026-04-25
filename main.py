@@ -4,6 +4,8 @@ from mysql.connector import Error
 from tkinter import messagebox
 import webbrowser
 import threading
+import re
+import os
 
 # Database Configuration (UPDATE THESE WITH YOUR CREDENTIALS)
 db_config = {
@@ -13,6 +15,27 @@ db_config = {
     'database': 'game_library_db'
 }
 
+# ---------------------------------------------------------------------------
+# Query Loader – reads queries.sql and builds a dict keyed by [query_name]
+# ---------------------------------------------------------------------------
+def load_queries(sql_file="queries.sql"):
+    """Parse queries.sql and return a dict of {name: sql_string}."""
+    queries = {}
+    sql_path = os.path.join(os.path.dirname(__file__), sql_file)
+    with open(sql_path, "r") as f:
+        content = f.read()
+
+    # Split on -- [name] markers
+    blocks = re.split(r"--\s*\[(\w+)\]", content)
+    # blocks: ['preamble', 'name1', 'sql1', 'name2', 'sql2', ...]
+    it = iter(blocks[1:])  # skip leading preamble
+    for name, sql in zip(it, it):
+        queries[name.strip()] = sql.strip().rstrip(";")
+    return queries
+
+Q = load_queries()  # Global query dictionary
+
+
 def get_db_connection():
     try:
         return mysql.connector.connect(**db_config)
@@ -20,17 +43,18 @@ def get_db_connection():
         messagebox.showerror("Database Error", f"Failed to connect: {e}")
         return None
 
+
 class GameLibraryApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("YoRHa Game Library")
-        self.geometry("1100x800") 
+        self.geometry("1100x800")
         ctk.set_appearance_mode("Dark")
         ctk.set_default_color_theme("dark-blue")
 
         self.current_user_id = None
         self.current_username = None
-        self.current_user_is_dev = False 
+        self.current_user_is_dev = False
 
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -58,24 +82,23 @@ class GameLibraryApp(ctk.CTk):
 
         if is_login:
             ctk.CTkButton(self.auth_frame, text="Login", width=250, height=40, command=self.login).pack(pady=(20, 10))
-            ctk.CTkButton(self.auth_frame, text="Need an account? Register", fg_color="transparent", 
+            ctk.CTkButton(self.auth_frame, text="Need an account? Register", fg_color="transparent",
                           command=lambda: self.show_auth_frame(is_login=False)).pack(pady=(0, 20))
         else:
             self.email_entry = ctk.CTkEntry(self.auth_frame, placeholder_text="Email", width=250, height=40)
             self.email_entry.pack(pady=10, padx=40)
-            
+
             self.dev_checkbox = ctk.CTkCheckBox(self.auth_frame, text="Register as Admin / Dev account")
             self.dev_checkbox.pack(pady=10, padx=40)
 
             ctk.CTkButton(self.auth_frame, text="Register", width=250, height=40, command=self.register).pack(pady=(20, 10))
-            ctk.CTkButton(self.auth_frame, text="Back to Login", fg_color="transparent", 
+            ctk.CTkButton(self.auth_frame, text="Back to Login", fg_color="transparent",
                           command=lambda: self.show_auth_frame(is_login=True)).pack(pady=(0, 20))
 
     def login(self):
         username, password = self.username_entry.get(), self.password_entry.get()
-        
-        # Change the button text to show the user we are working on it
-        login_btn = self.auth_frame.winfo_children()[3] # Grabs the Login button
+
+        login_btn = self.auth_frame.winfo_children()[3]
         login_btn.configure(text="Authenticating...", state="disabled")
 
         def login_db_thread():
@@ -83,26 +106,22 @@ class GameLibraryApp(ctk.CTk):
             user = None
             if conn:
                 cursor = conn.cursor(dictionary=True)
-                cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
+                cursor.execute(Q["login"], (username, password))
                 user = cursor.fetchone()
                 conn.close()
-            
-            # Send result back to main thread
             self.after(0, lambda: process_login_result(user))
 
         def process_login_result(user):
             if user:
                 self.current_user_id = user['user_id']
                 self.current_username = user['username']
-                self.current_user_is_dev = bool(user.get('is_developer', False)) 
-                
+                self.current_user_is_dev = bool(user.get('is_developer', False))
                 self.auth_frame.destroy()
                 self.build_main_ui()
             else:
-                login_btn.configure(text="Login", state="normal") # Reset button
+                login_btn.configure(text="Login", state="normal")
                 messagebox.showerror("Error", "Invalid credentials.")
 
-        # Start the background check
         threading.Thread(target=login_db_thread, daemon=True).start()
 
     def register(self):
@@ -113,13 +132,12 @@ class GameLibraryApp(ctk.CTk):
 
         if not username or not password:
             return messagebox.showwarning("Warning", "Username and Password required.")
-        
+
         conn = get_db_connection()
         if conn:
             cursor = conn.cursor()
             try:
-                cursor.execute("INSERT INTO users (username, password, email, is_developer) VALUES (%s, %s, %s, %s)", 
-                               (username, password, email, is_dev))
+                cursor.execute(Q["register"], (username, password, email, is_dev))
                 conn.commit()
                 messagebox.showinfo("Success", "Account created! You can now log in.")
                 self.show_auth_frame(is_login=True)
@@ -145,22 +163,22 @@ class GameLibraryApp(ctk.CTk):
         self.nav_btn("Browse Games", lambda: self.load_view("browse"))
         self.nav_btn("My Library", lambda: self.load_view("library"))
         self.nav_btn("Favorites", lambda: self.load_view("favorites"))
-        
+
         if self.current_user_is_dev:
             self.nav_btn("Add New Game (Admin)", lambda: self.load_view("add_game"))
-            
+
         self.nav_btn("Profile Settings", lambda: self.load_view("profile"))
-        
+
         role_tag = "(Admin)" if self.current_user_is_dev else "(User)"
         self.sidebar_user_label = ctk.CTkLabel(self.sidebar, text=f"{self.current_username} {role_tag}", text_color="gray")
         self.sidebar_user_label.pack(side="bottom", pady=(0, 10))
-        
-        ctk.CTkButton(self.sidebar, text="Logout", fg_color="#ab3c3c", hover_color="#8a3030", 
+
+        ctk.CTkButton(self.sidebar, text="Logout", fg_color="#ab3c3c", hover_color="#8a3030",
                       command=self.logout).pack(side="bottom", pady=20, padx=20)
 
         self.content_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
         self.content_frame.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
-        
+
         self.current_view = "browse"
         self.load_view("browse")
 
@@ -171,7 +189,7 @@ class GameLibraryApp(ctk.CTk):
         self.show_auth_frame()
 
     def nav_btn(self, text, command):
-        btn = ctk.CTkButton(self.sidebar, text=text, fg_color="transparent", text_color=("gray10", "gray90"), 
+        btn = ctk.CTkButton(self.sidebar, text=text, fg_color="transparent", text_color=("gray10", "gray90"),
                             hover_color=("gray70", "gray30"), anchor="w", command=command, height=35, font=("Arial", 14))
         btn.pack(fill="x", pady=5, padx=15)
 
@@ -194,54 +212,49 @@ class GameLibraryApp(ctk.CTk):
     # --- UI COMPONENTS ---
     def create_game_card(self, parent, game, view_type="browse"):
         card = ctk.CTkFrame(parent, corner_radius=10, fg_color="#2b2b2b")
-        # I reduced ipady from 35 to 20 so the cards don't look overly massive now that text is centered
-        card.pack(fill="x", pady=15, ipady=20) 
+        card.pack(fill="x", pady=15, ipady=20)
 
         info_frame = ctk.CTkFrame(card, fg_color="transparent")
-        # FIX: Changed fill="both" to fill="x". This naturally centers the frame vertically!
         info_frame.pack(side="left", fill="x", expand=True, padx=30, anchor="center")
 
         title_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
         title_frame.pack(anchor="w", fill="x", pady=(0, 5))
 
         ctk.CTkLabel(title_frame, text=game['title'], font=("Arial", 24, "bold"), text_color="#ffffff").pack(side="left")
-        
+
         dev_name = game.get('developer_name', 'Unknown')
         ctk.CTkLabel(info_frame, text=f"{game['genre']}  •  {dev_name}", font=("Arial", 16), text_color="#a1a1a1").pack(anchor="w")
 
         action_frame = ctk.CTkFrame(card, fg_color="transparent")
-        # Explicitly setting anchor="center" here as well for perfect alignment
         action_frame.pack(side="right", padx=30, anchor="center")
 
         fav_text = "★" if game.get('is_favorite') else "☆"
         fav_color = "#e6b800" if game.get('is_favorite') else "gray"
-        ctk.CTkButton(action_frame, text=fav_text, width=40, height=40, fg_color="transparent", text_color=fav_color, 
+        ctk.CTkButton(action_frame, text=fav_text, width=40, height=40, fg_color="transparent", text_color=fav_color,
                       font=("Arial", 28), hover_color="#3a3a3a",
                       command=lambda g_id=game['game_id'], fav=game.get('is_favorite'): self.toggle_favorite(g_id, fav)).pack(side="left", padx=(0, 15))
 
         if game.get('link'):
-            ctk.CTkButton(action_frame, text="🌐 Store Page", width=120, height=40, font=("Arial", 14, "bold"), 
+            ctk.CTkButton(action_frame, text="🌐 Store Page", width=120, height=40, font=("Arial", 14, "bold"),
                           fg_color="#444444", hover_color="#5a5a5a",
                           command=lambda url=game['link']: webbrowser.open(url)).pack(side="left", padx=(0, 15))
 
-        # --- Read Reviews Button ---
-        ctk.CTkButton(action_frame, text="💬 Read Reviews", width=130, height=40, font=("Arial", 14, "bold"), 
+        ctk.CTkButton(action_frame, text="💬 Read Reviews", width=130, height=40, font=("Arial", 14, "bold"),
                       fg_color="#5c437a", hover_color="#45325c",
                       command=lambda g=game: self.open_read_reviews_window(g)).pack(side="left", padx=(0, 15))
 
-        # Add vs Review Context Logic
         if game.get('is_owned'):
-            if view_type == "library" or view_type == "favorites":
-                ctk.CTkButton(action_frame, text="Write Review", width=120, height=40, font=("Arial", 14, "bold"), 
+            if view_type in ("library", "favorites"):
+                ctk.CTkButton(action_frame, text="Write Review", width=120, height=40, font=("Arial", 14, "bold"),
                               fg_color="#3b8ed0", hover_color="#2a6a9b",
                               command=lambda g=game: self.open_review_window(g)).pack(side="right")
             else:
                 ctk.CTkLabel(action_frame, text="In Library", font=("Arial", 16, "bold"), text_color="#a1a1a1").pack(side="right", padx=10)
         else:
-            ctk.CTkButton(action_frame, text="Add", width=120, height=40, font=("Arial", 14, "bold"), 
+            ctk.CTkButton(action_frame, text="Add", width=120, height=40, font=("Arial", 14, "bold"),
                           fg_color="#2da346", hover_color="#248238",
                           command=lambda g_id=game['game_id']: self.add_to_library(g_id)).pack(side="right")
-                          
+
         return card
 
     # --- Read Reviews Window ---
@@ -259,13 +272,7 @@ class GameLibraryApp(ctk.CTk):
         conn = get_db_connection()
         if conn:
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("""
-                SELECT r.review_text, r.review_date, u.username 
-                FROM reviews r 
-                JOIN users u ON r.user_id = u.user_id 
-                WHERE r.game_id = %s 
-                ORDER BY r.review_date DESC
-            """, (game['game_id'],))
+            cursor.execute(Q["get_reviews"], (game['game_id'],))
             reviews = cursor.fetchall()
             conn.close()
 
@@ -279,7 +286,6 @@ class GameLibraryApp(ctk.CTk):
                     date_str = rev['review_date'].strftime('%Y-%m-%d') if rev['review_date'] else ''
                     header_text = f"@{rev['username']}  •  {date_str}"
                     ctk.CTkLabel(rev_frame, text=header_text, font=("Arial", 12, "bold"), text_color="#a1a1a1", anchor="w").pack(fill="x")
-                    
                     ctk.CTkLabel(rev_frame, text=rev['review_text'], font=("Arial", 14), text_color="#ffffff", justify="left", wraplength=450, anchor="w").pack(fill="x", pady=(8, 0))
 
     # --- Write Review Popup Window ---
@@ -287,17 +293,16 @@ class GameLibraryApp(ctk.CTk):
         review_win = ctk.CTkToplevel(self)
         review_win.title(f"Review - {game['title']}")
         review_win.geometry("500x400")
-        review_win.attributes('-topmost', True) 
-        review_win.grab_set() 
+        review_win.attributes('-topmost', True)
+        review_win.grab_set()
 
         ctk.CTkLabel(review_win, text=f"Write a review for {game['title']}", font=("Arial", 20, "bold"), text_color="#ffffff").pack(pady=(20, 10))
-        
+
         textbox = ctk.CTkTextbox(review_win, width=400, height=200, font=("Arial", 14))
         textbox.pack(pady=10)
 
         def submit_review():
             review_content = textbox.get("1.0", "end-1c").strip()
-            
             if not review_content:
                 messagebox.showwarning("Warning", "Review cannot be empty.", parent=review_win)
                 return
@@ -306,25 +311,20 @@ class GameLibraryApp(ctk.CTk):
             if conn:
                 cursor = conn.cursor()
                 try:
-                    cursor.execute(
-                        "INSERT INTO reviews (user_id, game_id, review_text) VALUES (%s, %s, %s)",
-                        (self.current_user_id, game['game_id'], review_content)
-                    )
+                    cursor.execute(Q["insert_review"], (self.current_user_id, game['game_id'], review_content))
                     conn.commit()
                     messagebox.showinfo("Success", "Review saved successfully!", parent=review_win)
-                    review_win.destroy() 
+                    review_win.destroy()
                 except Error as e:
                     messagebox.showerror("Database Error", f"Could not save review: {e}", parent=review_win)
                 finally:
                     conn.close()
 
-        ctk.CTkButton(review_win, text="Submit Review", width=200, height=40, font=("Arial", 14, "bold"), 
+        ctk.CTkButton(review_win, text="Submit Review", width=200, height=40, font=("Arial", 14, "bold"),
                       fg_color="#3b8ed0", hover_color="#2a6a9b", command=submit_review).pack(pady=15)
 
-    # --- VIEWS & DATABASE LOGIC (OPTIMIZED WITH DEBOUNCING) ---
-    # --- VIEWS & DATABASE LOGIC (THREADED & OPTIMIZED) ---
-    def fetch_and_display_games(self, title, query, parent_frame, view_type="browse"):
-        # 1. Setup the UI Header and Search Bar immediately (No lag here)
+    # --- VIEWS & DATABASE LOGIC ---
+    def fetch_and_display_games(self, title, query_key, parent_frame, view_type="browse"):
         header_frame = ctk.CTkFrame(parent_frame, fg_color="transparent")
         header_frame.pack(fill="x", pady=(0, 20))
 
@@ -342,27 +342,21 @@ class GameLibraryApp(ctk.CTk):
         scroll_frame = ctk.CTkScrollableFrame(parent_frame, fg_color="transparent")
         scroll_frame.pack(fill="both", expand=True)
 
-        # --- Show a Loading Indicator while the database thinks ---
         loading_label = ctk.CTkLabel(scroll_frame, text="Fetching data from server...", font=("Arial", 16, "italic"), text_color="gray")
         loading_label.pack(pady=40)
 
-        # 2. Define the Background Database Worker
         def fetch_data_thread():
             conn = get_db_connection()
             games_data = []
             if conn:
                 cursor = conn.cursor(dictionary=True)
-                cursor.execute(query, (self.current_user_id, self.current_user_id))
+                cursor.execute(Q[query_key], (self.current_user_id, self.current_user_id))
                 games_data = cursor.fetchall()
                 conn.close()
-            
-            # Tkinter is NOT thread-safe. We must use .after(0, ...) to safely pass 
-            # the data back to the main UI thread to draw the cards.
             self.after(0, lambda: render_ui_with_data(games_data))
 
-        # 3. Define what happens when the data comes back
         def render_ui_with_data(games_data):
-            loading_label.destroy() # Remove the loading text
+            loading_label.destroy()
 
             self.all_card_widgets = []
             for game in games_data:
@@ -371,7 +365,6 @@ class GameLibraryApp(ctk.CTk):
 
             no_results_label = ctk.CTkLabel(scroll_frame, text="No matching games found.", font=("Arial", 16), text_color="gray")
 
-            # Search Filtering Logic
             def process_search():
                 search_query = search_var.get().lower()
                 visible_count = 0
@@ -379,65 +372,40 @@ class GameLibraryApp(ctk.CTk):
                     game = item['data']
                     card = item['widget']
                     if search_query in game['title'].lower() or search_query in game['genre'].lower():
-                        card.pack(fill="x", pady=15, ipady=20) 
+                        card.pack(fill="x", pady=15, ipady=20)
                         visible_count += 1
                     else:
-                        card.pack_forget() 
-                
+                        card.pack_forget()
+
                 if visible_count == 0 and games_data:
                     no_results_label.pack(pady=40)
                 else:
                     no_results_label.pack_forget()
 
             self.search_timer = None
+
             def delayed_search(event=None):
                 if self.search_timer:
                     self.after_cancel(self.search_timer)
                 self.search_timer = self.after(250, process_search)
 
             search_entry.bind("<KeyRelease>", delayed_search)
-            
-            if not games_data:
-                 ctk.CTkLabel(scroll_frame, text="Nothing to see here yet!", font=("Arial", 16)).pack(pady=40)
-            else:
-                 process_search() # Run initial render
 
-        # 4. Actually start the background thread!
-        # daemon=True means this thread will safely die if you close the app window
+            if not games_data:
+                ctk.CTkLabel(scroll_frame, text="Nothing to see here yet!", font=("Arial", 16)).pack(pady=40)
+            else:
+                process_search()
+
         threading.Thread(target=fetch_data_thread, daemon=True).start()
+
     def render_browse(self):
-        query = """
-            SELECT g.*, d.name AS developer_name, 
-                   CASE WHEN og.game_id IS NOT NULL THEN 1 ELSE 0 END AS is_owned,
-                   CASE WHEN fg.game_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite
-            FROM games g 
-            LEFT JOIN developers d ON g.developer_id = d.developer_id
-            LEFT JOIN owned_games og ON g.game_id = og.game_id AND og.user_id = %s
-            LEFT JOIN favorite_games fg ON g.game_id = fg.game_id AND fg.user_id = %s
-        """
-        self.fetch_and_display_games("Browse Games", query, self.content_frame, "browse")
+        self.fetch_and_display_games("Browse Games", "browse_games", self.content_frame, "browse")
 
     def render_library(self):
-        query = """
-            SELECT g.*, d.name AS developer_name, 1 AS is_owned,
-                   CASE WHEN fg.game_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite
-            FROM games g
-            JOIN owned_games og ON g.game_id = og.game_id AND og.user_id = %s
-            LEFT JOIN developers d ON g.developer_id = d.developer_id
-            LEFT JOIN favorite_games fg ON g.game_id = fg.game_id AND fg.user_id = %s
-        """
-        self.fetch_and_display_games("My Collection", query, self.content_frame, "library")
+        self.fetch_and_display_games("My Collection", "library_games", self.content_frame, "library")
 
     def render_favorites(self):
-        query = """
-            SELECT g.*, d.name AS developer_name, 1 AS is_favorite,
-                   CASE WHEN og.game_id IS NOT NULL THEN 1 ELSE 0 END AS is_owned
-            FROM games g
-            JOIN favorite_games fg ON g.game_id = fg.game_id AND fg.user_id = %s
-            LEFT JOIN developers d ON g.developer_id = d.developer_id
-            LEFT JOIN owned_games og ON g.game_id = og.game_id AND og.user_id = %s
-        """
-        self.fetch_and_display_games("My Favorites", query, self.content_frame, "favorites")
+        self.fetch_and_display_games("My Favorites", "favorite_games", self.content_frame, "favorites")
 
     def toggle_favorite(self, game_id, is_currently_favorited):
         conn = get_db_connection()
@@ -445,11 +413,11 @@ class GameLibraryApp(ctk.CTk):
             cursor = conn.cursor()
             try:
                 if is_currently_favorited:
-                    cursor.execute("DELETE FROM favorite_games WHERE user_id = %s AND game_id = %s", (self.current_user_id, game_id))
+                    cursor.execute(Q["remove_from_favorites"], (self.current_user_id, game_id))
                 else:
-                    cursor.execute("INSERT INTO favorite_games (user_id, game_id) VALUES (%s, %s)", (self.current_user_id, game_id))
+                    cursor.execute(Q["add_to_favorites"], (self.current_user_id, game_id))
                 conn.commit()
-                self.load_view(self.current_view) 
+                self.load_view(self.current_view)
             except Error:
                 messagebox.showerror("Error", "Could not update favorites.")
             finally:
@@ -460,10 +428,10 @@ class GameLibraryApp(ctk.CTk):
         if conn:
             cursor = conn.cursor()
             try:
-                cursor.execute("INSERT INTO owned_games (user_id, game_id) VALUES (%s, %s)", (self.current_user_id, game_id))
+                cursor.execute(Q["add_to_library"], (self.current_user_id, game_id))
                 conn.commit()
                 messagebox.showinfo("Success", "Game added to your library!")
-                self.load_view(self.current_view) 
+                self.load_view(self.current_view)
             except Error:
                 messagebox.showerror("Error", "Could not add game to library.")
             finally:
@@ -471,16 +439,16 @@ class GameLibraryApp(ctk.CTk):
 
     def render_add_game(self):
         ctk.CTkLabel(self.content_frame, text="Add Game to Database", font=("Arial", 30, "bold"), text_color="#ffffff").pack(anchor="w", pady=(0, 20))
-        
+
         form = ctk.CTkFrame(self.content_frame, corner_radius=10, fg_color="#2b2b2b")
         form.pack(fill="x", pady=10, ipady=30)
 
         title_entry = ctk.CTkEntry(form, placeholder_text="Game Title", width=350, height=40)
         title_entry.pack(pady=10)
-        
+
         genre_entry = ctk.CTkEntry(form, placeholder_text="Genre", width=350, height=40)
         genre_entry.pack(pady=10)
-        
+
         dev_entry = ctk.CTkEntry(form, placeholder_text="Developer / Studio Name", width=350, height=40)
         dev_entry.pack(pady=10)
 
@@ -498,19 +466,18 @@ class GameLibraryApp(ctk.CTk):
 
             conn = get_db_connection()
             if conn:
-                cursor = conn.cursor() 
+                cursor = conn.cursor()
                 try:
-                    cursor.execute("SELECT developer_id FROM developers WHERE name = %s", (d_name,))
+                    cursor.execute(Q["get_developer_by_name"], (d_name,))
                     dev_result = cursor.fetchone()
-                    
+
                     if dev_result:
                         d_id = dev_result[0]
                     else:
-                        cursor.execute("INSERT INTO developers (name) VALUES (%s)", (d_name,))
+                        cursor.execute(Q["insert_developer"], (d_name,))
                         d_id = cursor.lastrowid
 
-                    cursor.execute("INSERT INTO games (title, genre, price, developer_id, link) VALUES (%s, %s, %s, %s, %s)", 
-                                   (t, g, 0.00, d_id, link_url if link_url else None))
+                    cursor.execute(Q["insert_game"], (t, g, 0.00, d_id, link_url if link_url else None))
                     conn.commit()
                     messagebox.showinfo("Success", f"{t} successfully added!")
                     self.load_view("browse")
@@ -523,7 +490,7 @@ class GameLibraryApp(ctk.CTk):
 
     def render_profile(self):
         ctk.CTkLabel(self.content_frame, text="Profile Settings", font=("Arial", 30, "bold"), text_color="#ffffff").pack(anchor="w", pady=(0, 20))
-        
+
         form = ctk.CTkFrame(self.content_frame, corner_radius=10, fg_color="#2b2b2b")
         form.pack(fill="x", pady=10, ipady=30)
 
@@ -531,7 +498,7 @@ class GameLibraryApp(ctk.CTk):
         current_email = ""
         if conn:
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT email FROM users WHERE user_id = %s", (self.current_user_id,))
+            cursor.execute(Q["get_user_email"], (self.current_user_id,))
             user = cursor.fetchone()
             if user and user['email']:
                 current_email = user['email']
@@ -542,11 +509,11 @@ class GameLibraryApp(ctk.CTk):
         user_entry = ctk.CTkEntry(form, placeholder_text="Username", width=350, height=40)
         user_entry.insert(0, self.current_username)
         user_entry.pack(pady=10)
-        
+
         email_entry = ctk.CTkEntry(form, placeholder_text="Email Address", width=350, height=40)
         email_entry.insert(0, current_email)
         email_entry.pack(pady=10)
-        
+
         pass_entry = ctk.CTkEntry(form, placeholder_text="New Password (leave blank to keep current)", show="*", width=350, height=40)
         pass_entry.pack(pady=10)
 
@@ -563,17 +530,15 @@ class GameLibraryApp(ctk.CTk):
                 cursor = conn.cursor()
                 try:
                     if new_pass:
-                        cursor.execute("UPDATE users SET username=%s, email=%s, password=%s WHERE user_id=%s", 
-                                       (new_user, new_email, new_pass, self.current_user_id))
+                        cursor.execute(Q["update_user_with_password"], (new_user, new_email, new_pass, self.current_user_id))
                     else:
-                        cursor.execute("UPDATE users SET username=%s, email=%s WHERE user_id=%s", 
-                                       (new_user, new_email, self.current_user_id))
+                        cursor.execute(Q["update_user_without_password"], (new_user, new_email, self.current_user_id))
                     conn.commit()
                     self.current_username = new_user
-                    
+
                     role_tag = "(Admin)" if self.current_user_is_dev else "(User)"
                     self.sidebar_user_label.configure(text=f"{self.current_username} {role_tag}")
-                    
+
                     messagebox.showinfo("Success", "Profile updated successfully!")
                 except Error:
                     messagebox.showerror("Error", "Could not update. Username or Email might already exist.")
